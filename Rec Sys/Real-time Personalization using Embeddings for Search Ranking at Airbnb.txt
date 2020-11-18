@@ -106,53 +106,49 @@ For training listing embeddings we created 800 million click sessions from searc
 Setting up Daily Training. We learn listing embeddings for 4.5 million Airbnb listings and our training data practicalities and parameters were tuned using offline evaluation techniques presented below. Our training data is updated daily in a sliding window manner over multiple months, by processing the latest day search sessions and adding them to the dataset and discarding the oldest day search sessions from the dataset. We train embeddings for each listing_id, where we initialize vectors randomly before training (same random seed is used every time). We found that we get better offline performance if we re-train listing embeddings from scratch every day, instead of incrementally continuing training on existing vectors. The day-to-day vector differences do not cause discrepancies in our models because in our applications we use the cosine similarity as the primary signal and not the actual vectors themselves. Even with vector changes over time, the connotations of cosine similarity measure and its ranges do not change.
 
 Dimensionality of listing embeddings was set to d = 32, as we found that to be a good trade-off between offline performance and memory needed to store vectors in RAM memory of search machines for purposes of real-time similarity calculations. Context window size was set to m = 5, and we performed 10 iterations over the training data. To implement the congregated search change to the algorithm we modified the original word2vec c code . Training used MapReduce, where 300 mappers read data and a single reducer trains the model in a multi-threaded manner. End-to-end daily data 2 generation and training pipeline is implemented using Airflow , which is Airbnb’s open-sourced scheduling platform.
-4.2 Offline Evaluation of Listing Embeddings To be able to make quick decisions regarding different ideas on optimization function, training data construction, hyperparameters, etc, we needed a way to quickly compare different embeddings.
+
+4.2 Offline Evaluation of Listing Embeddings 
+
+To be able to make quick decisions regarding different ideas on optimization function, training data construction, hyperparameters, etc, we needed a way to quickly compare different embeddings.
+
 One way to evaluate trained embeddings is to test how good they are in recommending listings that user would book, based on the most recent user click. More specifically, let us assume we are given the most recently clicked listing and listing candidates that need to be ranked, which contain the listing that user eventually booked. By calculating cosine similarities between embeddings of clicked listing and candidate listings we can rank the candidates and observe the rank position of the booked listing.
 
 Offline evaluation of Listing Embeddings
-For purposes of evaluation we use a large number of such search, click and booking events, where rankings were already assigned by our Search Ranking model. In Figure 6 we show results of offline evaluation in which we compared several versions of d = 32 embeddings with regards to how they rank the booked listing based on clicks that precede it. Rankings of booked listing are averaged for each click leading to the booking, going as far back as 17 clicks before the booking to the Last click before the booking. Lower values mean higher ranking. Embedding versions that we compared were 1) d32: trained using (3), 2) d32 book: trained with bookings as global context (4) and 3) d32 book + neg: trained with bookings as global context and explicit negatives from same market (5).
-It can be observed that Search Ranking model gets better with more clicks as it uses memorization features. It can also be observed that re-ranking listings based on embedding similarity would be useful, especially in early stages of the search funnel. Finally, we can conclude that d32 book + neg outperforms the other two embedding versions. The same type of graphs were used to make decisions regarding hyperparameters, data construction, etc.
-4.3 Similar Listings using Embeddings
-Every Airbnb home listing page3 contains Similar Listings carousel which recommends listings that are similar to it and available for the same set of dates. At the time of our test, the existing algorithm for Similar Listings carousel was calling the main Search Ranking model for the same location as the given listing followed by filtering on availability, price range and listing type of the given listing.
-We conducted an A/B test where we compared the existing similar listings algorithm to an embedding-based solution, in which similar listings were produced by finding the k -nearest neighbors in listing embedding space. Given learned listing embeddings, similar listings for a given listing l were found by calculating cosine similarity between its vector vl and vectors vj of all listings from the same market that are available for the same set of dates (if check-in and check-out dates are set). The K listings with the highest similarity were retrieved as similar listings. The calculations were performed online and happen in parallel using our sharded architecture, where parts of embeddings are stored on each of the search machines.
-3 https://www.airbnb.com/rooms/433392
-  317
 
-Applied Data Science Track Paper
-KDD 2018, August 19-23, 2018, London, United Kingdom
+For purposes of evaluation we use a large number of such search, click and booking events, where rankings were already assigned by our Search Ranking model. In Figure 6 we show results of offline evaluation in which we compared several versions of d = 32 embeddings with regards to how they rank the booked listing based on clicks that precede it. Rankings of booked listing are averaged for each click leading to the booking, going as far back as 17 clicks before the booking to the Last click before the booking. Lower values mean higher ranking. Embedding versions that we compared were 1) d32: trained using (3), 2) d32 book: trained with bookings as global context (4) and 3) d32 book + neg: trained with bookings as global context and explicit negatives from same market (5).
+
+It can be observed that Search Ranking model gets better with more clicks as it uses memorization features. It can also be observed that re-ranking listings based on embedding similarity would be useful, especially in early stages of the search funnel. Finally, we can conclude that d32 book + neg outperforms the other two embedding versions. The same type of graphs were used to make decisions regarding hyperparameters, data construction, etc.
+
+4.3 Similar Listings using Embeddings
+
+Every Airbnb home listing page3 contains Similar Listings carousel which recommends listings that are similar to it and available for the same set of dates. At the time of our test, the existing algorithm for Similar Listings carousel was calling the main Search Ranking model for the same location as the given listing followed by filtering on availability, price range and listing type of the given listing.
+
+We conducted an A/B test where we compared the existing similar listings algorithm to an embedding-based solution, in which similar listings were produced by finding the k -nearest neighbors in listing embedding space. Given learned listing embeddings, similar listings for a given listing l were found by calculating cosine similarity between its vector vl and vectors vj of all listings from the same market that are available for the same set of dates (if check-in and check-out dates are set). The K listings with the highest similarity were retrieved as similar listings. The calculations were performed online and happen in parallel using our sharded architecture, where parts of embeddings are stored on each of the search machines.
+
+
+
 The A/B test showed that embedding-based solution lead to a 21% increase in Similar Listing carousel CTR (23% in cases when listing page had entered dates and 20% in cases of dateless pages) and 4.9% increase in guests who find the listing they end up booking in Similar Listing carousel. In light of these results we deployed the embedding-based Similar Listings to production.
-4.4 Real time personalization in Search Ranking using Embeddings
-Background. To formally describe our Search Ranking Model, let
-us assume we are given training data about each search Ds =
-(xi,yi),i = 1...K, where K is the number of listings returned by
-search,xi isavectorcontainingfeaturesofthei-thlistingresultand
-yi ∈{0,0.01,0.25,1,−0.4}isthelabelassignedtothei-thlisting
-result. To assign the label to a particular listing from the search
-result we wait for 1 week after search happened to observe the final
-outcome, which can be yi = 1 if listing was booked, yi = 0.25 if
-listing host was contacted by the guest but booking did not happen,
-y = −0.4 if listing host rejected the guest, yi = 0.01 is listing was
-clicked and yi = 0 if listing was just viewed but not clicked. After
-that 1 week wait the set Ds is also shortened to keep only search
-resultsuptothelastresultuserclickedonKc ≤K.Finally,toform
-data D = 􏰆N Ds we only keep Ds sets which contain at least one s=1
-booking label. Every time we train a new ranking model we use the most recent 30 days of data.
+
+4.4 Real time personalization in Search Ranking using Embeddings 
+Background. 
+To formally describe our Search Ranking Model, let us assume we are given training data about each search Ds = (xi,yi),i = 1...K, where K is the number of listings returned by search,xi is a vector containing features of the i-th listing result and yi ∈{0,0.01,0.25,1,−0.4} is the label assigned to the i-th listing result. To assign the label to a particular listing from the search result we wait for 1 week after search happened to observe the final outcome, which can be yi = 1 if listing was booked, yi = 0.25 if listing host was contacted by the guest but booking did not happen, y = −0.4 if listing host rejected the guest, yi = 0.01 is listing was clicked and yi = 0 if listing was just viewed but not clicked. After that 1 week wait the set Ds is also shortened to keep only search results up to the last result user clicked on Kc ≤K.Finally,toform data D = 􏰆N Ds we only keep Ds sets which contain at least one s=1 booking label. Every time we train a new ranking model we use the most recent 30 days of data.
+
+
+
 Feature vector xi for the i -th listing result consists of listing features, user features, query features and cross-features. Listing features are features associated with the listing itself, such as price per night, listing type, number of rooms, rejection rate, etc. Query features are features associated with the issued query, such as number of guests, length of stay, lead days, etc. User features are features associated with the user who is conducting the search, such as average booked price, guest rating, etc. Cross-features are features derived from two or more of these feature sources: listing, user, query. Examples of such features are query listing distance: distance between query location and listing location, capacity fit: difference between query number of guests and listing capacity, price difference: difference between listing price and average price of user’s historical bookings, rejection probability: probability that host will reject these query parameters, click percentage: real-time memorization feature that tracks what percentage of user’s clicks were on that particular listing, etc. The model uses approximately 100 features. For conciseness we will not list all of them.
+
 Next, we formulate the problem as pairwise regression with search labels as utilities and use data D to train a Gradient Boosting Decision Trees (GBDT) model, using package 4 that was modified to support Lambda Rank. When evaluating different models offline, we use NDCG, a standard ranking metric, on hold-out set of search sessions, i.e. 80% of D for training and 20% for testing.
+
 Finally, once the model is trained it is used for online scoring of listings in search. The signals needed to calculate feature vectors xi for each listing returned by search query q performed by user u are all calculated in an online manner and scoring happens in parallel using our sharded architecture. Given all the scores, the listings are shown to the user in a descending order of predicted utility.
-4 https://github.com/yarny/gbdt
-Table 6: Embedding Features for Search Ranking
-Feature Name
-EmbClickSim EmbSkipSim EmbLongClickSim EmbWishlistSim EmbInqSim EmbBookSim
-EmbLastLongClickSim UserTypeListingTypeSim
-Description
-similarity to clicked listings in Hc similarity to skipped listings Hs similarity to long clicked listings Hl c similarity to wishlisted listings Hw similarity to contacted listings Hi similarity to booked listing Hb
-similarity to last long clicked listing user type and listing type similarity
-   Listing Embedding Features. The first step in adding embedding features to our Search Ranking Model was to load the 4.5 million embeddings into our search backend such that they can be accessed in real-time for feature calculation and model scoring.
+
+
+Listing Embedding Features. 
+The first step in adding embedding features to our Search Ranking Model was to load the 4.5 million embeddings into our search backend such that they can be accessed in real-time for feature calculation and model scoring.
+
 Next, we introduced several user short-term history sets, that
 hold user actions from last 2 weeks, which are updated in real-time
-as new user actions happen. The logic was implemented using
-5
+as new user actions happen. The logic was implemented using 
+
 usingKafka .Specifically,foreachuser_idwecollectandmaintain
 (regularly update) the following sets of listing ids:
 (1) Hc : clicked listing_ids listings that user clicked on in last 2 weeks.
@@ -161,97 +157,42 @@ usingKafka .Specifically,foreachuser_idwecollectandmaintain
 (4) Hw : wishlisted listing_ids listings that user added to a wishlist in last 2 weeks.
 (5) Hi : inquired listing_ids listings that user contacted in last 2 weeks but did not book.
 (6) Hb : booked listing_ids listings that user booked in last 2 weeks.
-We further split each of the short-term history sets H∗ into subsets that contain listings from the same market. For example, if user had clicked on listings from New York and Los Angeles, their setHc wouldbefurthersplitintoHc(NY)andHc(LA).
-Finally, we define the embedding features which utilize the defined sets and the listing embeddings to produce a score for each candidate listing. The features are summarized in Table 6.
-In the following we describe how EmbClickSim feature is computed using Hc . The rest of the features from top rows of Table 6 are computed in the same manner using their corresponding user short-term history set H∗.
-To compute EmbClickSim for candidate listing li we need to compute cosine similarity between its listing embedding vli and embeddings of listings in Hc . We do so by first computing Hc market-level centroid embeddings. To illustrate, let us assume Hc contains 5 listings from NY and 3 listings from LA. This would entail computing two market-level centroid embeddings, one for NY and one for LA, by averaging embeddings of listing ids from each of the markets. Finally, EmbClickSim is calculated as maximum out of
-5https://kafka.apache.org
-  318
 
-Applied Data Science Track Paper KDD 2018, August 19-23, 2018, London, United Kingdom
- Figure 7: Partial Dependency Plots for EmbClickSim, EmbSkipSim and UserTypeListTypeSim
-two similarities between listing embedding vli and Hc market-level centroid embeddings.
-More generally EmbClickSim can be expressed as 􏰇
-EmbClickSim(li , Hc ) = max cos(vli , vlh ), (10) m∈M lh ∈m,lh ∈Hc
-where M is the set of markets user had clicks in.
-In addition to similarity to all user clicks, we added a feature that
-measures similarity to the latest long click, EmbLastLongClickSim. For a candidate listing li it is calculated by finding the cosine similaritybetweenitsembeddingvli andtheembeddingofthelatest longclickedlistingllast fromHlc,
-EmbLastLonдClickSim(li,Hlc) = cos(vli ,vllast ). (11)
+We further split each of the short-term history sets H∗ into subsets that contain listings from the same market. For example, if user had clicked on listings from New York and Los Angeles, their setHc would be further split into Hc(NY) and Hc(LA).
+
+Finally, we define the embedding features which utilize the defined sets and the listing embeddings to produce a score for each candidate listing. The features are summarized in Table 6.
+
+In the following we describe how EmbClickSim feature is computed using Hc . The rest of the features from top rows of Table 6 are computed in the same manner using their corresponding user short-term history set H∗.
+
+To compute EmbClickSim for candidate listing li we need to compute cosine similarity between its listing embedding vli and embeddings of listings in Hc . We do so by first computing Hc market-level centroid embeddings. To illustrate, let us assume Hc contains 5 listings from NY and 3 listings from LA. This would entail computing two market-level centroid embeddings, one for NY and one for LA, by averaging embeddings of listing ids from each of the markets. Finally, EmbClickSim is calculated as maximum out of two similarities between listing embedding vli and Hc market-level centroid embeddings.
+
+More generally EmbClickSim can be expressed as 􏰇 XXXXXX, where M is the set of markets user had clicks in.
+
+
+In addition to similarity to all user clicks, we added a feature that measures similarity to the latest long click, EmbLastLongClickSim. For a candidate listing li it is calculated by finding the cosine similarity between its embedding vli and the embedding of the latest long clicked listing l from Hlc,
+
+
 User-type & Listing-type Embedding Features. We follow similar procedure to introduce features based on user type and listing type embeddings. We trained embeddings for 500K user types and 500K listing types using 50 million user booking sessions. Embeddings were d = 32 dimensional and were trained using a sliding window of m = 5 over booking sessions. The user type and listing type embeddings were loaded to search machines memory, such that we can compute the type similarities online.
+
 To compute the UserTypeListingTypeSim feature for candidate listing li we simply look-up its current listing type lt as well as current user type ut of the user who is conducting the search and calculate cosine similarity between their embeddings,
-UserTypeListingTypeSim(ut,lt)=cos(vut,vlt). (12)
+XXXXXX
 All features from Table 6 were logged for 30 days so they could be added to search ranking training set D. The coverage of features, meaning the proportion of D which had particular feature populated, are reported in Table 7. As expected, it can be observed that features based on user clicks and skips have the highest coverage.
-Finally, we trained a new GBDT Search Ranking model with embedding features added. Feature importances for embedding features (ranking among 104 features) are shown in Table 7. Top ranking features are similarity to listings user clicked on (EmbClickSim: ranked 5th overall) and similarity to listings user skipped (EmbSkipSim: ranked 8th overall). Five embedding features ranked among the top 20 features. As expected, long-term feature UserTypeListingTypeSim which used all past user bookings ranked better than short-term feature EmbBookSim which takes into account only bookings from last 2 weeks. This also shows that recommendations
-Table 7: Embedding Features Coverage and Importances
-Feature Name
-EmbClickSim EmbSkipSim EmbLongClickSim EmbWishlistSim EmbInqSim EmbBookSim
-EmbLastLongClickSim UserTypeListingTypeSim
-Coverage Feature Importance 76.16% 5/104
-78.64% 8/104 51.05% 20/104 36.50% 47/104 20.61% 12/104 8.06% 46/104
-48.28% 11/104 86.11% 22/104
-   319
-based on past bookings are better with embeddings that are trained using historical booking sessions instead of click sessions.
+
+Finally, we trained a new GBDT Search Ranking model with embedding features added. Feature importances for embedding features (ranking among 104 features) are shown in Table 7. Top ranking features are similarity to listings user clicked on (EmbClickSim: ranked 5th overall) and similarity to listings user skipped (EmbSkipSim: ranked 8th overall). Five embedding features ranked among the top 20 features. As expected, long-term feature UserTypeListingTypeSim which used all past user bookings ranked better than short-term feature EmbBookSim which takes into account only bookings from last 2 weeks. This also shows that recommendations based on past bookings are better with embeddings that are trained using historical booking sessions instead of click sessions.
+
+
 To evaluate if the model learned to use the features as we intended, we plot the partial dependency plots for 3 embedding features: EmbClickSim, EmbSkipSim and UserTypeListTypeSim. These plots show what would happen to listing’s ranking score if we fix values of all but a single feature (the one we are examining). On the left subgraph it can be seen that large values of EmbClickSim, which convey that listing is similar to the listings user recently click on, lead to a higher model score. The middle subgraph shows that large values of EmbSkipSim, which indicate that listing is similar to the listings user skipped, lead to a lower model score. Finally, the right subgraph shows that large values of UserTypeListingTypeSim, which indicate that user type is similar to listing type, lead to a higher model score as expected.
+
 Online Experiment Results Summary. We conducted both offline and online experiments (A/B test). First, we compared two search ranking models trained on the same data with and without embedding features. In Table 8 we summarize the results in terms of DCU (Discounted Cumulative Utility) per each utility (impression, click, rejection and booking) and overall NDCU (Normalized Discounted Cumulative Utility). It can be observed that adding embedding features resulted in 2.27% lift in NDCU, where booking DCU increased by 2.58%, meaning that booked listings were ranked higher in the hold-out set, without any hit on rejections (DCU -0.4 was flat), meaning that rejected listings did not rank any higher than in the model without embedding features.
 
-Applied Data Science Track Paper
-KDD 2018, August 19-23, 2018, London, United Kingdom
-Table 8: Offline Experiment Results
-Conference on World Wide Web. International World Wide Web Conferences
-Steering Committee, 248–255.
-[8] MihajloGrbovic,NemanjaDjuric,VladanRadosavljevic,FabrizioSilvestri,Ri-
-cardo Baeza-Yates, Andrew Feng, Erik Ordentlich, Lee Yang, and Gavin Owens. 2016. Scalable semantic matching of queries to ads in sponsored search advertising. In SIGIR 2016. ACM, 375–384.
-[9] Mihajlo Grbovic, Nemanja Djuric, Vladan Radosavljevic, Fabrizio Silvestri, and Narayan Bhamidipati. 2015. Context-and content-aware embeddings for query rewriting in sponsored search. In SIGIR 2015. ACM, 383–392.
-[10] MihajloGrbovic,VladanRadosavljevic,NemanjaDjuric,NarayanBhamidipati, and Ananth Nagarajan. 2015. Gender and interest targeting for sponsored post advertising at tumblr. In Proceedings of the 21th ACM SIGKDD International Conference on Knowledge Discovery and Data Mining. ACM, 1819–1828.
-[11] MihajloGrbovic,VladanRadosavljevic,NemanjaDjuric,NarayanBhamidipati, Jaikit Savla, Varun Bhagwan, and Doug Sharp. 2015. E-commerce in your inbox: Product recommendations at scale. In Proceedings of the 21th ACM SIGKDD International Conference on Knowledge Discovery and Data Mining.
-[12] Aditya Grover and Jure Leskovec. 2016. node2vec: Scalable feature learning for networks. In Proceedings of the 22nd ACM SIGKDD international conference on Knowledge discovery and data mining. ACM, 855–864.
-[13] Krishnaram Kenthapadi, Benjamin Le, and Ganesh Venkataraman. 2017. Personalized Job Recommendation System at LinkedIn: Practical Challenges and Lessons Learned. In Proceedings of the Eleventh ACM Conference on Recommender Systems. ACM, 346–347.
-[14] Maciej Kula. 2015. Metadata embeddings for user and item cold-start recommendations. arXiv preprint arXiv:1507.08439 (2015).
-[15] Benjamin Le. 2017. Deep Learning for Personalized Search and Recommender Systems. In Slideshare: https://www.slideshare.net/BenjaminLe4/deep-learning-forpersonalized-search-and-recommender-systems.
-[16] SteveLiu.2017.PersonalizedRecommendationsatTinder:TheTinVecApproach. In Slideshare: https://www.slideshare.net/SessionsEvents/dr-steve-liu-chief-scientisttinder-at-mlconf-sf-2017.
-[17] TomasMikolov,IlyaSutskever,KaiChen,GregSCorrado,andJeffDean.2013. Distributed representations of words and phrases and their compositionality. In Advances in neural information processing systems. 3111–3119.
-[18] Thomas Nedelec, Elena Smirnova, and Flavian Vasile. 2017. Specializing Joint Representations for the task of Product Recommendation. arXiv preprint arXiv:1706.07625 (2017).
-[19] Shumpei Okura, Yukihiro Tagami, Shingo Ono, and Akira Tajima. 2017. Embedding-based news recommendation for millions of users. In Proceedings of the 23rd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining. ACM, 1933–1942.
-[20] BryanPerozzi,RamiAl-Rfou,andStevenSkiena.2014.Deepwalk:Onlinelearning of social representations. In Proceedings of the 20th ACM SIGKDD international conference on Knowledge discovery and data mining. ACM, 701–710.
-[21] VladanRadosavljevic,MihajloGrbovic,NemanjaDjuric,NarayanBhamidipati, Daneo Zhang, Jack Wang, Jiankai Dang, Haiying Huang, Ananth Nagarajan, and Peiji Chen. 2016. Smartphone app categorization for interest targeting in advertising marketplace. In Proceedings of the 25th International Conference Companion on World Wide Web. International World Wide Web Conferences Steering Committee, 93–94.
-[22] Sharath Rao. 2017. Learned Embeddings for Search at Instacart. In
-Slideshare: https://www.slideshare.net/SharathRao6/learned-embeddings-for-search-
-and-discovery-at-instacart.
-[23] Thomas Schmitt, François Gonard, Philippe Caillou, and Michèle Sebag. 2017.
-Language Modelling for Collaborative Filtering: Application to Job Applicant
-Matching. In IEEE International Conference on Tools with Artificial Intelligence.
-[24] Yukihiro Tagami, Hayato Kobayashi, Shingo Ono, and Akira Tajima. 2015. Modeling User Activities on the Web using Paragraph Vector. In Proceedings of the
-24th International Conference on World Wide Web. ACM, 125–126.
-[25] Joseph Turian, Lev Ratinov, and Yoshua Bengio. 2010. Word representations: a simple and general method for semi-supervised learning. In Proceedings of the 48th annual meeting of the association for computational linguistics. Association
-for Computational Linguistics, 384–394.
-[26] Dongjing Wang, Shuiguang Deng, Xin Zhang, and Guandong Xu. 2016. Learn-
-ing music embedding with metadata for context aware recommendation. In
-Proceedings of the 2016 ACM on International Conference on Multimedia Retrieval.
-[27] Jason Weston, Ron J Weiss, and Hector Yee. 2013. Nonlinear latent factorization by embedding multiple user interests. In Proceedings of the 7th ACM conference
-on Recommender systems. ACM, 65–68.
-[28] Ledell Wu, Adam Fisch, Sumit Chopra, Keith Adams, Antoine Bordes, and Jason
-Weston. 2017. StarSpace: Embed All The Things! arXiv preprint arXiv:1709.03856.
-[29] Dawei Yin, Yuening Hu, Jiliang Tang, Tim Daly, Mianwei Zhou, Hua Ouyang, Jianhui Chen, Changsung Kang, Hongbo Deng, Chikashi Nobata, et al. 2016.
-Ranking relevance in yahoo search. In Proceedings of the 22nd ACM SIGKDD.
-Metrics
-DCU -0.4 (rejections) DCU 0.01 (clicks) DCU 0.25 (contacts) DCU 1 (bookings)
-NDCU
-Percentage Lift
-+0.31% +1.48% +1.95% +2.58%
-+2.27%
-  Observations from Table 8, plus the fact that embedding features ranked high in GBDT feature importances (Table 7) and the finding that features behavior matches what we intuitively expected (Figure 7) was enough to make a decision to proceed to an online experiment. In the online experiment we saw a statistically significant booking gain and embedding features were launched to production. Several months later we conducted a back test in which we attempted to remove the embedding features, and it resulted in negative bookings, which was another indicator that the real-time embedding features are effective.
+Observations from Table 8, plus the fact that embedding features ranked high in GBDT feature importances (Table 7) and the finding that features behavior matches what we intuitively expected (Figure 7) was enough to make a decision to proceed to an online experiment. In the online experiment we saw a statistically significant booking gain and embedding features were launched to production. Several months later we conducted a back test in which we attempted to remove the embedding features, and it resulted in negative bookings, which was another indicator that the real-time embedding features are effective.
+
+
 5 CONCLUSION
 We proposed a novel method for real-time personalization in Search Ranking at Airbnb. The method learns low-dimensional representations of home listings and users based on contextual co-occurrence in user click and booking sessions. To better leverage available search contexts, we incorporate concepts such as global context and explicit negative signals into the training procedure. We evaluated the proposed method in Similar Listing Recommendations and Search Ranking. After successful test on live search traffic both embedding applications were deployed to production.
+
 ACKNOWLEDGEMENTS
 We would like to thank the entire Airbnb Search Ranking Team for their contributions to the project, especially Qing Zhang and Lynn Yang. We would also like to thank Phillippe Siclait and Matt Jones for creating the Embedding Evaluation Tool. The summary of this
-6 paperwaspublishedinAirbnb’sMediumBlog .
-REFERENCES
-[1] Kamelia Aryafar, Devin Guillory, and Liangjie Hong. 2016. An Ensemble-based Approach to Click-Through Rate Prediction for Promoted Listings at Etsy. In arXiv preprint arXiv:1711.01377.
-[2] Ricardo Baeza-Yates, Berthier Ribeiro-Neto, et al. 1999. Modern information retrieval. Vol. 463. ACM press New York.
-[3] Oren Barkan and Noam Koenigstein. 2016. Item2vec: neural item embedding for collaborative filtering. In Machine Learning for Signal Processing (MLSP), 2016 IEEE 26th International Workshop on. IEEE, 1–6.
-[4] Christopher J Burges, Robert Ragno, and Quoc V Le. 2011. Learning to rank with nonsmooth cost functions. In Advances in NIPS 2007.
-[5] Ting Chen, Liangjie Hong, Yue Shi, and Yizhou Sun. 2017. Joint Text Embedding for Personalized Content-based Recommendation. In arXiv preprint arXiv:1706.01084.
-[6] Nemanja Djuric, Vladan Radosavljevic, Mihajlo Grbovic, and Narayan Bhamidipati. 2014. Hidden conditional random fields with distributed user embeddings for ad targeting. In IEEE International Conference on Data Mining.
-[7] Nemanja Djuric, Hao Wu, Vladan Radosavljevic, Mihajlo Grbovic, and Narayan Bhamidipati. 2015. Hierarchical neural language models for joint representation of streaming documents and their content. In Proceedings of the 24th International
-6 https://medium.com/airbnb-engineering/listing-embeddings-for-similar-listingrecommendations-and-real-time-personalization-in-search-601172f7603e
- 320
+
+
+
