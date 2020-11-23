@@ -150,7 +150,7 @@ We can speed up the training process further, by assigning shorter paths to the 
 
 4.2.3 Optimization
 
-The model parameter set is {Φ, T } where the size of each is O(d|V |). Stochastic gradient descent (SGD) [4] is used to optimize these parameters (Line 4, Algorithm 2). The derivatives are estimated using the back-propagation algorithm. The learning rate α for SGD is initially set to 2.5% at the beginning of the training and then decreased linearly
+The model parameter set is {Φ, T } where the size of each is O(d|V |). Stochastic gradient descent (SGD) [4] is used to optimize these parameters (Line 4, Algorithm 2). The derivatives are estimated using the back-propagation algorithm. The learning rate α for SGD is initially set to 2.5% at the beginning of the training and then decreased linearly with the number of vertices that are seen so far.
 
 Figure 3: Overview of DeepWalk. We slide a window of length 2w + 1 over the random walk Wv4 , mapping the central vertex v1 to its representation Φ(v1). Hierarchical Softmax factors out Pr(v3 | Φ(v1)) and Pr(v5 | Φ(v1)) over sequences of probability distributions corresponding to the paths starting at the root and ending at v3 and v5. The representation Φ is updated to maximize the probability of v1 co-occurring with its context {v3,v5}.
 
