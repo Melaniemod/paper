@@ -165,15 +165,7 @@ The selective history behaviors are from category Computer Speakers, Headphones,
 
 Online Serving & A/B testing
 
-From 2018-06-07 to 2018-07-12, online A/B testing was conducted in the display advertising system of Taobao. As shown in Table 5, compared to the BaseModel, DIEN has improved CTR by 20.7% and effective cost per
-
-(a) Visualization of hidden states in AUGRU
-
-(b) Attention score of different history behaviors
-
-Figure 3: Visualization of interest evolution, (a) The hidden states of AUGRU reduced by PCA into two dimensions. Different curves shows the same history behaviors are activated by different target items. None means interest evolving is not effected by target item. (b) Faced with different target item, attention scores of all history behaviors are shown.
-
-mille (eCPM) by 17.1%. Besides, DIEN has decayed pay per click (PPC) by 3.0%. Now, DIEN has been deployed online and serves the main traffic, which contributes a significant business revenue growth.
+From 2018-06-07 to 2018-07-12, online A/B testing was conducted in the display advertising system of Taobao. As shown in Table 5, compared to the BaseModel, DIEN has improved CTR by 20.7% and effective cost per mille (eCPM) by 17.1%. Besides, DIEN has decayed pay per click (PPC) by 3.0%. Now, DIEN has been deployed online and serves the main traffic, which contributes a significant business revenue growth.
 
 It is worth noticing that online serving of DIEN is a great challenge for commercial system. Online system holds really high traffic in our display advertising system, which serves more than 1 million users per second at traffic peak. In order to keep low latency and high throughput, we deploy several important techniques to improve serving performance: i) element parallel GRU & kernel fusion (Wang, Lin, and Yi 2010), we fuse as many independent kernels as possible. Besides, each element of the hidden state of GRU can be calculated in parallel. ii) Batching: adjacent requests from different users are merged into one batch to take advantage of GPU. iii) Model compressing with Rocket Launching (Zhou et al. 2018b): we use the method proposed in (Zhou et al. 2018b) to train a light network, which has smaller size but performs close to the deeper and more complex one. For instance, the dimension of GRU hidden state can be compressed from 108 to 32 with the help of Rocket Launching. With the help of these techniques, latency of DIEN serving can be reduced from 38.2 ms to 6.6 ms and the QPS (Query Per Second) capacity of each worker can be improved to 360.
 
