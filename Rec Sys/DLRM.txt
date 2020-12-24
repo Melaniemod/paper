@@ -26,22 +26,14 @@ In more complex scenarios, an embedding can also represent a weighted combinatio
 DLRMs will utilize embedding tables for mapping categorical features to dense representations. However, even after these embeddings are meaningfully devised, how are they to be exploited to produce accurate predictions? To answer this, we return to latent factor methods.
 
 2.1.2 Matrix Factorization
-Recall that in the typical formulation of the recommendation problem, we are given a set S of users that have rated some products. We would like to represent the i-th product by a vector wi 2 Rd for i = 1; :::; n and j-th user by a vector vj 2 Rd for j = 1; :::;m to find all the ratings, where n and m denote the total number of products and users, respectively. More rigorously, the set S consists of tuples (i; j) indexing when the i-th product has been rated by the j-th user. The matrix factorization approach solves this problem by minimizing min
+Recall that in the typical formulation of the recommendation problem, we are given a set S of users that have rated some products. We would like to represent the i-th product by a vector wi 2 Rd for i = 1; :::; n and j-th user by a vector vj 2 Rd for j = 1; :::;m to find all the ratings, where n and m denote the total number of products and users, respectively. More rigorously, the set S consists of tuples (i; j) indexing when the i-th product has been rated by the j-th user. 
 
-Note that W and V may be interpreted as two
-embedding tables, where each row represents a user/product in a latent factor space2 [17]. The dot
-product of these embedding vectors yields a meaningful prediction of the subsequent rating, a key
-observation to the design of factorization machines and DLRM.
+
+The matrix factorization approach solves this problem by minimizing min
+
+Note that W and V may be interpreted as two embedding tables, where each row represents a user/product in a latent factor space2 [17]. The dot product of these embedding vectors yields a meaningful prediction of the subsequent rating, a key observation to the design of factorization machines and DLRM.
 
 2.1.3 Factorization Machine
-In classification problems, we want to define a prediction function  : Rn ! T from an input
-datapoint x 2 Rn to a target label y 2 T. As an example, we can predict the click-through rate by
-defining T = f+1;􀀀1g with +1 denoting the presence of a click and 􀀀1 as the absence of a click.
-Factorization machines (FM) incorporate second-order interactions into a linear model with categorical
-data by defining a model of the form
-^y = b + wTx + xT upper(V V T )x (4)
-where V 2 Rnd, w 2 Rn, and b 2 R are the parameters with d  n, and upper selects the strictly
-upper triangular part of the matrix [24].
 
 FMs are notably distinct from support vector machines (SVMs) with polynomial kernels [4] because they factorize the second-order interaction matrix into its latent factors (or embedding vectors) as in matrix factorization, which more effectively handles sparse data. This significantly reduces the complexity of the second-order interactions by only capturing interactions between pairs of distinct embedding vectors, yielding linear computational complexity.
 
@@ -49,7 +41,7 @@ FMs are notably distinct from support vector machines (SVMs) with polynomial ker
 2.1.4 Multilayer Perceptrons
 Simultaneously, much recent success in machine learning has been due to the rise of deep learning. The most fundamental model of these is the multilayer perceptron (MLP), a prediction function composed of an interleaving sequence of fully connected (FC) layers and an activation function
 
- : R ! R applied componentwise as shown below
+
 
 These methods have been used to capture more complex interactions. It has been shown, for example, that given enough parameters, MLPs with sufficient depth and width can fit data to arbitrary precision [1]. Variations of these methods have been widely used in various applications including computer vision and natural language processing. One specific case, Neural Collaborative Filtering (NCF) [15, 25] used as part of the MLPerf benchmark [19], uses an MLP rather than dot product to compute interactions between embeddings in matrix factorization.
 
